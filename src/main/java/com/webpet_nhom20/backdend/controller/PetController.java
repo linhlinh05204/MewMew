@@ -1,10 +1,13 @@
 package com.webpet_nhom20.backdend.controller;
 
 import com.webpet_nhom20.backdend.dto.request.Pet.FullPetCreationRequest;
+import com.webpet_nhom20.backdend.dto.request.Pet.MyPetCreationRequest;
+import com.webpet_nhom20.backdend.dto.request.Pet.MyPetUpdateRequest;
 import com.webpet_nhom20.backdend.dto.request.Pet.PetCreationRequest;
 import com.webpet_nhom20.backdend.dto.request.Pet.PetUpdateRequest;
 import com.webpet_nhom20.backdend.dto.request.Product.FullProductCreateRequest;
 import com.webpet_nhom20.backdend.dto.response.ApiResponse;
+import com.webpet_nhom20.backdend.dto.response.Pet.AdminPetResponse;
 import com.webpet_nhom20.backdend.dto.response.Pet.FullPetCreateResponse;
 import com.webpet_nhom20.backdend.dto.response.Pet.PetResponse;
 import com.webpet_nhom20.backdend.dto.response.Product.FullProductCreateResponse;
@@ -14,6 +17,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -84,6 +88,34 @@ public class PetController {
                 .message("Xóa thú cưng thành công")
                 .build();
     }
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('SHOP')")
+    public ApiResponse<Page<AdminPetResponse>> getAllPetsForAdmin(
+            Pageable pageable,
+            @RequestParam(required = false) String animal,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String ownerQuery,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String isDeleted) {
+
+        return ApiResponse.<Page<AdminPetResponse>>builder()
+                .success(true)
+                .message("Lấy danh sách hồ sơ thú cưng thành công")
+                .result(petService.getAllPetsForAdmin(animal, name, ownerQuery, status, isDeleted, pageable))
+                .build();
+    }
+
+    @GetMapping("/admin/{id}")
+    @PreAuthorize("hasRole('SHOP')")
+    public ApiResponse<AdminPetResponse> getPetByIdForAdmin(@PathVariable int id) {
+        return ApiResponse.<AdminPetResponse>builder()
+                .success(true)
+                .message("Lấy chi tiết hồ sơ thú cưng thành công")
+                .result(petService.getPetByIdForAdmin(id))
+                .build();
+    }
+
     @GetMapping("/{petId}")
     public ApiResponse<PetResponse> getPetById(@PathVariable int petId) {
         return ApiResponse.<PetResponse>builder()
@@ -114,6 +146,73 @@ public class PetController {
                 .success(true)
                 .message("Lấy danh sách giống loài thành công")
                 .result(petService.getBreed())
+                .build();
+    }
+
+    // ==========================================
+    // MY PETS API (Phase 3.1)
+    // ==========================================
+
+    @PostMapping("/my-pets")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'SHOP')")
+    public ApiResponse<PetResponse> createMyPet(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @Valid @RequestBody MyPetCreationRequest request) {
+        return ApiResponse.<PetResponse>builder()
+                .success(true)
+                .message("Tạo thú cưng thành công")
+                .result(petService.createMyPet(request, token))
+                .build();
+    }
+
+    @GetMapping("/my-pets")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'SHOP')")
+    public ApiResponse<Page<PetResponse>> getMyPets(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String animal,
+            Pageable pageable) {
+        return ApiResponse.<Page<PetResponse>>builder()
+                .success(true)
+                .message("Lấy danh sách thú cưng thành công")
+                .result(petService.getMyPets(token, name, animal, pageable))
+                .build();
+    }
+
+    @GetMapping("/my-pets/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'SHOP')")
+    public ApiResponse<PetResponse> getMyPetById(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable int id) {
+        return ApiResponse.<PetResponse>builder()
+                .success(true)
+                .message("Lấy thông tin thú cưng thành công")
+                .result(petService.getMyPetById(id, token))
+                .build();
+    }
+
+    @PutMapping("/my-pets/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'SHOP')")
+    public ApiResponse<PetResponse> updateMyPet(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable int id,
+            @Valid @RequestBody MyPetUpdateRequest request) {
+        return ApiResponse.<PetResponse>builder()
+                .success(true)
+                .message("Cập nhật thú cưng thành công")
+                .result(petService.updateMyPet(id, request, token))
+                .build();
+    }
+
+    @DeleteMapping("/my-pets/{id}")
+    @PreAuthorize("hasAnyRole('CUSTOMER', 'SHOP')")
+    public ApiResponse<Void> deleteMyPet(
+            @RequestHeader(value = "Authorization", required = false) String token,
+            @PathVariable int id) {
+        petService.deleteMyPet(id, token);
+        return ApiResponse.<Void>builder()
+                .success(true)
+                .message("Xóa thú cưng thành công")
                 .build();
     }
 }

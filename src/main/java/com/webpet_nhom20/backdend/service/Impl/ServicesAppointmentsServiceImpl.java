@@ -209,25 +209,38 @@ public class ServicesAppointmentsServiceImpl implements ServicesAppointmentsServ
         @Override
         public Page<ServiceAppointmentsResponse> getAppointmentsByRole(
                         UserServiceAppointmentRequest request,
+                        String token,
                         Pageable pageable) {
 
-                String role = request.getRoleName();
+                // === SEC-01 FIX: Luôn dùng userId và role từ JWT, bỏ qua request body để phân quyền ===
+
+                // 1. Trích xuất userId và role từ JWT đã được Spring Security xác thực
+                Integer userIdFromToken = jwtTokenProvider.getUserId(token);
+                String roleFromToken = jwtTokenProvider.getUserRole(token);
+
+                // 2. Kiểm tra tính hợp lệ của JWT
+                if (userIdFromToken == null || roleFromToken == null) {
+                        throw new AppException(ErrorCode.UNAUTHENTICATED);
+                }
+
+                // 3. Chỉ chấp nhận role CUSTOMER hoặc SHOP (không nâng quyền mặc định)
                 Page<ServiceAppointments> page;
 
-                if ("SHOP".equals(role)) {
-
+                if ("SHOP".equals(roleFromToken)) {
+                        // SHOP: xem toàn bộ lịch hẹn
                         page = servicesAppointmentsRepository
                                         .findAllOrderByStatusAndNearest(pageable);
 
-                } else if ("CUSTOMER".equals(role)) {
-
+                } else if ("CUSTOMER".equals(roleFromToken)) {
+                        // CUSTOMER: chỉ xem lịch hẹn của chính mình (userId từ JWT)
                         page = servicesAppointmentsRepository
                                         .findByUserIdOrderByStatusAndNearest(
-                                                        request.getUserId(),
+                                                        userIdFromToken,
                                                         pageable);
 
                 } else {
-                        throw new RuntimeException("Invalid role: " + role);
+                        // Role không hợp lệ → từ chối, không nâng quyền mặc định
+                        throw new AppException(ErrorCode.UNAUTHORIZED);
                 }
 
                 return page.map(this::mapToResponse);

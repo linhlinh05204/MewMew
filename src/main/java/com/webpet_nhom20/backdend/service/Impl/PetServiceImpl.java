@@ -1,12 +1,17 @@
 package com.webpet_nhom20.backdend.service.Impl;
 
+import com.webpet_nhom20.backdend.config.JwtTokenProvider;
 import com.webpet_nhom20.backdend.dto.request.Pet.FullPetCreationRequest;
+import com.webpet_nhom20.backdend.dto.request.Pet.MyPetCreationRequest;
+import com.webpet_nhom20.backdend.dto.request.Pet.MyPetUpdateRequest;
 import com.webpet_nhom20.backdend.dto.request.Pet.PetCreationRequest;
 import com.webpet_nhom20.backdend.dto.request.Pet.PetUpdateRequest;
 import com.webpet_nhom20.backdend.dto.request.PetImage.PetImageCreationDto;
 import com.webpet_nhom20.backdend.dto.request.Product.FullProductCreateRequest;
 import com.webpet_nhom20.backdend.dto.request.Product_Variant.VariantCreateDto;
+import com.webpet_nhom20.backdend.dto.response.Pet.AdminPetResponse;
 import com.webpet_nhom20.backdend.dto.response.Pet.FullPetCreateResponse;
+import com.webpet_nhom20.backdend.dto.response.Pet.PetOwnerResponse;
 import com.webpet_nhom20.backdend.dto.response.Pet.PetResponse;
 import com.webpet_nhom20.backdend.dto.response.PetImage.PetImageResponse;
 import com.webpet_nhom20.backdend.dto.response.Product.FullProductCreateResponse;
@@ -17,6 +22,7 @@ import com.webpet_nhom20.backdend.enums.PetStatus;
 import com.webpet_nhom20.backdend.exception.AppException;
 import com.webpet_nhom20.backdend.repository.PetImageRepository;
 import com.webpet_nhom20.backdend.repository.PetRepository;
+import com.webpet_nhom20.backdend.repository.UserRepository;
 import com.webpet_nhom20.backdend.service.PetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.webpet_nhom20.backdend.exception.ErrorCode;
@@ -29,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,6 +46,10 @@ public class PetServiceImpl implements PetService {
     private PetRepository petRepository;
     @Autowired
     private PetImageRepository petImageRepository;
+    @Autowired
+    private JwtTokenProvider jwtTokenProvider;
+    @Autowired
+    private UserRepository userRepository;
 
     @PreAuthorize("hasRole('SHOP')")
     @Transactional
@@ -139,6 +150,7 @@ public class PetServiceImpl implements PetService {
     private PetResponse mapToPesResponse(Pets pet) {
         PetResponse response = PetResponse.builder()
                 .id(pet.getId())
+                .userId(pet.getUser() != null ? pet.getUser().getId() : null)
                 .name(pet.getName())
                 .animal(pet.getAnimal())
                 .breed(pet.getBreed())
@@ -350,4 +362,297 @@ public class PetServiceImpl implements PetService {
         return petRepository.getBreed();
     }
 
+    // ==========================================
+    // MY PETS IMPLEMENTATION (Phase 3.1)
+    // ==========================================
+
+    @Override
+    @Transactional
+    public PetResponse createMyPet(MyPetCreationRequest request, String token) {
+        // 1. Determine owner exclusively from verified JWT token (anti BOLA/IDOR)
+        Integer userId = jwtTokenProvider.getUserId(token);
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTS));
+
+        // 2. Build Pet with user ownership; ignore any client-provided userId
+        Pets pet = Pets.builder()
+                .name(request.getName())
+                .animal(request.getAnimal())
+                .breed(request.getBreed())
+                .age(request.getAge())
+                .ageGroup(request.getAgeGroup())
+                .weight(request.getWeight())
+                .gender(request.getGender())
+                .description(request.getDescription())
+                .healthStatus(request.getHealthStatus())
+                .vaccinated(request.getVaccinated())
+                .neutered(request.getNeutered())
+                .status(request.getStatus() != null && !request.getStatus().isBlank() ? request.getStatus() : "ACTIVE")
+                .isDeleted("0")
+                .user(user)
+                .build();
+
+        Pets savedPet = petRepository.save(pet);
+
+        // 3. Process optional images
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            for (int i = 0; i < request.getImages().size(); i++) {
+                var imageDto = request.getImages().get(i);
+                PetImages image = PetImages.builder()
+                        .pet(savedPet)
+                        .imageUrl(imageDto.getImageUrl())
+                        .publicId(imageDto.getPublicId())
+                        .imagePosition(imageDto.getImagePosition() != 0 ? imageDto.getImagePosition() : i)
+                        .isPrimary(i == 0 || imageDto.isPrimary() ? 1 : 0)
+                        .isDeleted("0")
+                        .build();
+                petImageRepository.save(image);
+            }
+        }
+
+        return mapToPesResponse(savedPet);
+    }
+
+    @Override
+    public Page<PetResponse> getMyPets(String token, String name, String animal, Pageable pageable) {
+        Integer userId = jwtTokenProvider.getUserId(token);
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        Page<Pets> petPage = petRepository.findByUserIdWithFilters(
+                userId,
+                "0",
+                (name != null && !name.isBlank()) ? name : null,
+                (animal != null && !animal.isBlank()) ? animal : null,
+                pageable
+        );
+
+        List<PetResponse> responses = petPage.getContent().stream()
+                .map(this::mapToPesResponse)
+                .toList();
+
+        return new PageImpl<>(responses, pageable, petPage.getTotalElements());
+    }
+
+    @Override
+    public PetResponse getMyPetById(int petId, String token) {
+        Integer userId = jwtTokenProvider.getUserId(token);
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        Pets pet = petRepository.findById(petId)
+                .orElseThrow(() -> new AppException(ErrorCode.PET_NOT_FOUND));
+
+        if ("1".equals(pet.getIsDeleted())) {
+            throw new AppException(ErrorCode.PET_NOT_FOUND);
+        }
+
+        // BOLA check: pet must belong to the requesting user
+        if (pet.getUser() == null || pet.getUser().getId() != userId.intValue()) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        return mapToPesResponse(pet);
+    }
+
+    @Override
+    @Transactional
+    public PetResponse updateMyPet(int petId, MyPetUpdateRequest request, String token) {
+        Integer userId = jwtTokenProvider.getUserId(token);
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        Pets pet = petRepository.findById(petId)
+                .orElseThrow(() -> new AppException(ErrorCode.PET_NOT_FOUND));
+
+        if ("1".equals(pet.getIsDeleted())) {
+            throw new AppException(ErrorCode.PET_ALREADY_DELETED);
+        }
+
+        // BOLA check: pet must belong to the requesting user
+        if (pet.getUser() == null || pet.getUser().getId() != userId.intValue()) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        // Update fields if provided
+        if (request.getName() != null && !request.getName().isBlank()) {
+            pet.setName(request.getName());
+        }
+        if (request.getAnimal() != null && !request.getAnimal().isBlank()) {
+            pet.setAnimal(request.getAnimal());
+        }
+        if (request.getBreed() != null) {
+            pet.setBreed(request.getBreed());
+        }
+        if (request.getAge() != null) {
+            pet.setAge(request.getAge());
+        }
+        if (request.getAgeGroup() != null) {
+            pet.setAgeGroup(request.getAgeGroup());
+        }
+        if (request.getWeight() != null) {
+            pet.setWeight(request.getWeight());
+        }
+        if (request.getGender() != null) {
+            pet.setGender(request.getGender());
+        }
+        if (request.getDescription() != null) {
+            pet.setDescription(request.getDescription());
+        }
+        if (request.getHealthStatus() != null) {
+            pet.setHealthStatus(request.getHealthStatus());
+        }
+        if (request.getVaccinated() != null) {
+            pet.setVaccinated(request.getVaccinated());
+        }
+        if (request.getNeutered() != null) {
+            pet.setNeutered(request.getNeutered());
+        }
+        if (request.getStatus() != null && !request.getStatus().isBlank()) {
+            pet.setStatus(request.getStatus());
+        }
+
+        // NOTE: Ownership cannot be changed via request. pet.user remains intact.
+        pet.setUpdatedDate(new Date());
+        petRepository.save(pet);
+
+        // Handle image updates
+        if (request.getDeletedImageIds() != null && !request.getDeletedImageIds().isEmpty()) {
+            petImageRepository.softDeleteImages(request.getDeletedImageIds());
+        }
+
+        if (request.getPrimaryImageId() != null) {
+            List<PetImages> existingImages = petImageRepository.findByPetIdAndIsDeleted(petId, "0");
+            for (PetImages img : existingImages) {
+                img.setIsPrimary(img.getId() == request.getPrimaryImageId().intValue() ? 1 : 0);
+            }
+            petImageRepository.saveAll(existingImages);
+        }
+
+        if (request.getImages() != null && !request.getImages().isEmpty()) {
+            for (PetImageCreationDto dto : request.getImages()) {
+                PetImages image = PetImages.builder()
+                        .pet(pet)
+                        .imageUrl(dto.getImageUrl())
+                        .publicId(dto.getPublicId())
+                        .imagePosition(dto.getImagePosition())
+                        .isPrimary(dto.isPrimary() ? 1 : 0)
+                        .isDeleted("0")
+                        .build();
+                petImageRepository.save(image);
+            }
+        }
+
+        return mapToPesResponse(pet);
+    }
+
+    @Override
+    @Transactional
+    public void deleteMyPet(int petId, String token) {
+        Integer userId = jwtTokenProvider.getUserId(token);
+        if (userId == null) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+
+        Pets pet = petRepository.findById(petId)
+                .orElseThrow(() -> new AppException(ErrorCode.PET_NOT_FOUND));
+
+        if ("1".equals(pet.getIsDeleted())) {
+            throw new AppException(ErrorCode.PET_ALREADY_DELETED);
+        }
+
+        // BOLA check: pet must belong to the requesting user
+        if (pet.getUser() == null || pet.getUser().getId() != userId.intValue()) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        // Soft delete only
+        pet.setIsDeleted("1");
+        pet.setUpdatedDate(new Date());
+        petRepository.save(pet);
+    }
+
+    private AdminPetResponse mapToAdminPetResponse(Pets pet) {
+        PetOwnerResponse ownerResponse = null;
+        if (pet.getUser() != null) {
+            ownerResponse = PetOwnerResponse.builder()
+                    .id(pet.getUser().getId())
+                    .fullName(pet.getUser().getFullName())
+                    .email(pet.getUser().getEmail())
+                    .phone(pet.getUser().getPhone())
+                    .build();
+        }
+
+        AdminPetResponse response = AdminPetResponse.builder()
+                .id(pet.getId())
+                .userId(pet.getUser() != null ? pet.getUser().getId() : null)
+                .name(pet.getName())
+                .animal(pet.getAnimal())
+                .breed(pet.getBreed())
+                .age(pet.getAge())
+                .ageGroup(pet.getAgeGroup())
+                .weight(pet.getWeight())
+                .gender(pet.getGender())
+                .description(pet.getDescription())
+                .healthStatus(pet.getHealthStatus())
+                .vaccinated(pet.getVaccinated())
+                .neutered(pet.getNeutered())
+                .status(pet.getStatus())
+                .isDeleted(pet.getIsDeleted())
+                .createdDate(pet.getCreatedDate())
+                .updatedDate(pet.getUpdatedDate())
+                .owner(ownerResponse)
+                .build();
+
+        List<PetImages> images = petImageRepository.findByPetIdAndIsDeleted(pet.getId(), "0");
+        List<PetImageResponse> imageResponses = images.stream()
+                .map(image -> PetImageResponse.builder()
+                        .id(image.getId())
+                        .petId(image.getPet().getId())
+                        .imageUrl(image.getImageUrl())
+                        .position(image.getImagePosition())
+                        .isPrimary(image.getIsPrimary())
+                        .isDeleted(image.getIsDeleted())
+                        .createdDate(image.getCreatedDate())
+                        .build())
+                .toList();
+
+        response.setImages(imageResponses);
+        return response;
+    }
+
+    @Override
+    public Page<AdminPetResponse> getAllPetsForAdmin(String animal, String name, String ownerQuery, String status, String isDeleted, Pageable pageable) {
+        int pageSize = Math.min(pageable.getPageSize(), 100);
+        Pageable safePageable = PageRequest.of(pageable.getPageNumber(), pageSize, pageable.getSort());
+
+        Page<Pets> petPage = petRepository.findAllForAdmin(
+                (animal != null && !animal.isBlank()) ? animal.trim() : null,
+                (name != null && !name.isBlank()) ? name.trim() : null,
+                (ownerQuery != null && !ownerQuery.isBlank()) ? ownerQuery.trim() : null,
+                (status != null && !status.isBlank()) ? status.trim() : null,
+                (isDeleted != null && !isDeleted.isBlank()) ? isDeleted.trim() : null,
+                safePageable
+        );
+
+        List<AdminPetResponse> responses = petPage.getContent().stream()
+                .map(this::mapToAdminPetResponse)
+                .toList();
+
+        return new PageImpl<>(responses, safePageable, petPage.getTotalElements());
+    }
+
+    @Override
+    public AdminPetResponse getPetByIdForAdmin(int petId) {
+        Pets pet = petRepository.findById(petId)
+                .orElseThrow(() -> new AppException(ErrorCode.PET_NOT_FOUND));
+        return mapToAdminPetResponse(pet);
+    }
 }

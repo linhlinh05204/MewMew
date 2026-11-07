@@ -20,6 +20,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class PetResponse {
     private Integer id;
+    private Integer userId;
     private String name;
     private String animal; // Dog, Cat
     private String breed;

@@ -57,11 +57,12 @@ public class ServiceAppointmentsController {
         @PostMapping("/list")
         public ResponseEntity<ApiResponse<List<ServiceAppointmentsResponse>>> getAppointmentsByRole(
                         @RequestBody @Valid UserServiceAppointmentRequest request,
+                        @RequestHeader("Authorization") String token,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "10") int size) {
                 Pageable pageable = PageRequest.of(page, size);
                 Page<ServiceAppointmentsResponse> appointments = servicesAppointmentsService
-                                .getAppointmentsByRole(request, pageable);
+                                .getAppointmentsByRole(request, token, pageable);
                 ApiResponse<List<ServiceAppointmentsResponse>> response = ApiResponse
                                 .<List<ServiceAppointmentsResponse>>builder()
                                 .success(true)

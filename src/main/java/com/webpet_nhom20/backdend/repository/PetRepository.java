@@ -69,5 +69,61 @@ public interface PetRepository extends JpaRepository<Pets, Integer> {
     )
     List<String> getBreed();
 
+    @Query("""
+    SELECT p FROM Pets p
+    WHERE p.user.id = :userId
+    AND (:isDeleted IS NULL OR p.isDeleted = :isDeleted)
+    AND (:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
+    AND (:animal IS NULL OR p.animal = :animal)
+    """)
+    Page<Pets> findByUserIdWithFilters(
+            @Param("userId") Integer userId,
+            @Param("isDeleted") String isDeleted,
+            @Param("name") String name,
+            @Param("animal") String animal,
+            Pageable pageable
+    );
 
+    @Query(value = """
+    SELECT p FROM Pets p
+    LEFT JOIN FETCH p.user u
+    WHERE (:animal IS NULL OR p.animal = :animal)
+    AND (:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
+    AND (:status IS NULL OR p.status = :status)
+    AND (:isDeleted IS NULL OR p.isDeleted = :isDeleted)
+    AND (
+        :ownerQuery IS NULL
+        OR (u IS NOT NULL AND (
+            LOWER(u.fullName) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+            OR LOWER(u.email) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+            OR LOWER(u.phone) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+        ))
+    )
+    """,
+    countQuery = """
+    SELECT COUNT(p) FROM Pets p
+    LEFT JOIN p.user u
+    WHERE (:animal IS NULL OR p.animal = :animal)
+    AND (:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
+    AND (:status IS NULL OR p.status = :status)
+    AND (:isDeleted IS NULL OR p.isDeleted = :isDeleted)
+    AND (
+        :ownerQuery IS NULL
+        OR (u IS NOT NULL AND (
+            LOWER(u.fullName) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+            OR LOWER(u.email) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+            OR LOWER(u.phone) LIKE LOWER(CONCAT('%', :ownerQuery, '%'))
+        ))
+    )
+    """)
+    Page<Pets> findAllForAdmin(
+            @Param("animal") String animal,
+            @Param("name") String name,
+            @Param("ownerQuery") String ownerQuery,
+            @Param("status") String status,
+            @Param("isDeleted") String isDeleted,
+            Pageable pageable
+    );
+
+    java.util.Optional<Pets> findByIdAndIsDeleted(Integer id, String isDeleted);
 }

@@ -12,7 +12,7 @@ public interface ServicesAppointmentsService {
     public ServiceAppointmentsResponse create(ServiceAppointmentsRequest request);
 
     public Page<ServiceAppointmentsResponse> getAppointmentsByRole(UserServiceAppointmentRequest request,
-            Pageable pageable);
+            String token, Pageable pageable);
 
     public ServiceAppointmentsResponse update(UpdateServiceAppointmentRequest request, String token);
 

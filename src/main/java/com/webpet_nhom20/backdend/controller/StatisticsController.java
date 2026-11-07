@@ -5,6 +5,7 @@ import com.webpet_nhom20.backdend.dto.response.statistics.*;
 import com.webpet_nhom20.backdend.service.StatisticsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.List;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/statistics")
+@PreAuthorize("hasRole('SHOP')")
 public class StatisticsController {
 
     private final StatisticsService statisticsService;

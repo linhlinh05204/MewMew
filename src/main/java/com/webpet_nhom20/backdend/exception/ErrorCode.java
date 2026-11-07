@@ -184,6 +184,7 @@ public enum ErrorCode {
     PET_NOT_FOUND(2401, "Thú cưng không tồn tại", HttpStatus.NOT_FOUND),
     PET_MUST_HAVE_IMAGE(2402, "Thú cưng phải có ít nhất một hình ảnh", HttpStatus.BAD_REQUEST),
     CANNOT_RESTORE_PET_ADOPTED(2403, "Không thể khôi phục thú cưng đã được nhận nuôi", HttpStatus.BAD_REQUEST),
+    PET_ALREADY_DELETED(2404, "Thú cưng đã bị xóa", HttpStatus.BAD_REQUEST),
 
     // Adopt(2500-2599)
     ADOPT_NOT_FOUND(2500, "Yêu cầu nhận nuôi không tồn tại", HttpStatus.NOT_FOUND),

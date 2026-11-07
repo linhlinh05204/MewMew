@@ -110,9 +110,17 @@ public class CartServiceImpl implements CartService {
     @Override
     public CartResponse getCart(String token) {
         Integer userId = jwtTokenProvider.getUserId(token);
-        // 1. Lấy cart theo user
-        Cart cart = cartRepository.findByUserId(userId)
-                .orElseThrow(() -> new RuntimeException("Cart not found"));
+        // 1. Lấy cart theo user. Nếu user chưa có cart, trả về response giỏ hàng trống hợp lệ mà không tạo bản ghi mới trong DB.
+        Optional<Cart> cartOpt = cartRepository.findByUserId(userId);
+        if (cartOpt.isEmpty()) {
+            return CartResponse.builder()
+                    .id(0)
+                    .userId(userId)
+                    .items(new ArrayList<>())
+                    .totalItems(0)
+                    .build();
+        }
+        Cart cart = cartOpt.get();
 
         // 2. Lấy list item trong cart
         List<CartItems> items = cartItemRepository.findByCartId(cart.getId());

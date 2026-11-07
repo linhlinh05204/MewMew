@@ -88,6 +88,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Cấu hình trỏ tới Bean bên dưới
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/v1/pets/my-pets", "/api/v1/pets/my-pets/**", "/api/v1/pets/admin", "/api/v1/pets/admin/**").authenticated()
                         .requestMatchers(HttpMethod.POST, PUBLIC_POST_ENDPOINTS).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll()
                         .requestMatchers(SWAGGER_WHITELIST).permitAll()
@@ -95,7 +96,8 @@ public class SecurityConfig {
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwtConfigurer ->
                                 jwtConfigurer.decoder(jwtDecoder).jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                        .authenticationEntryPoint(new JwtAuthenticationEntryPoint()));
+                        .authenticationEntryPoint(new JwtAuthenticationEntryPoint())
+                        .accessDeniedHandler(new JwtAccessDeniedHandler()));
 
         return httpSecurity.build();
     }
